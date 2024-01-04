@@ -4,11 +4,10 @@ import { LinkedinService } from './linkedin.service';
 
 @Controller('linkedin')
 export class LinkedinController {
-
-    constructor(private readonly linkedInService: LinkedinService){}
+    constructor(private readonly linkedInService: LinkedinService) {}
 
     @Post('accessToken')
-    generateAccessToken(@Body() clientData: GenerateTokenDto){
+    generateAccessToken(@Body() clientData: GenerateTokenDto) {
         return this.linkedInService.generateAccessToken(clientData.client_id, clientData.client_secret);
     }
 }

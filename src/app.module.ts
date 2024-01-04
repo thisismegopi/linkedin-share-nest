@@ -4,8 +4,8 @@ import { AppService } from './app.service';
 import { LinkedinModule } from './linkedin/linkedin.module';
 
 @Module({
-  imports: [LinkedinModule],
-  controllers: [AppController],
-  providers: [AppService],
+    imports: [LinkedinModule],
+    controllers: [AppController],
+    providers: [AppService],
 })
 export class AppModule {}

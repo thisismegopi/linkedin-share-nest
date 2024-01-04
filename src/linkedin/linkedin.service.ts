@@ -1,63 +1,146 @@
 import { HttpService } from '@nestjs/axios';
-import { Injectable, InternalServerErrorException } from '@nestjs/common';
-import { AxiosResponse } from 'axios';
-import { Observable } from 'rxjs';
-import { AccessTokenResponse } from 'src/interfaces/accessToken.interface';
+import { HttpException, Injectable } from '@nestjs/common';
+import { AxiosRequestConfig, AxiosResponse } from 'axios';
+import { AccessTokenResponse } from '../interfaces/accessToken.interface';
+import { Blob } from 'buffer';
+import { PostType } from '../dtos/createPost.dto';
+import { ArticleOrImageShareContent, CreateShare, ShareMediaCategory, TextShareContent } from '../interfaces/share.interface';
 
 @Injectable()
 export class LinkedinService {
-    constructor(private readonly httpService: HttpService){}
+    constructor(private readonly httpService: HttpService) {}
 
     generateAccessToken = async (clientId: string, clientSecret: string): Promise<AxiosResponse<AccessTokenResponse>> => {
-        try {
-            return await this.httpService.axiosRef.post(`https://www.linkedin.com/oauth/v2/accessToken`, undefined,{params: {grant_type: 'client_credentials', client_id: clientId, client_secret: clientSecret}})
-        } catch (error) {
-            throw new InternalServerErrorException(error.response.data.error_description)
-        }
+        const requestConfig: AxiosRequestConfig = {
+            url: 'https://www.linkedin.com/oauth/v2/accessToken',
+            method: 'POST',
+            headers: {
+                'X-Restli-Protocol-Version': '2.0.0',
+            },
+            params: {
+                grant_type: 'client_credentials',
+                client_id: clientId,
+                client_secret: clientSecret,
+            },
+        };
+        return await this.httpService.axiosRef.request(requestConfig);
     };
 
-    getUser = async (authToken:string) => {
-        try {
-            return await this.httpService.axiosRef.get('https://api.linkedin.com/v2/me',{headers: {
-                'Authorization': `Bearer ${authToken}`,
-                'X-Restli-Protocol-Version':'2.0.0'
-            }})
-        } catch (error) {
-            throw new InternalServerErrorException(error.response.data.error_description)
-        }
-    }
+    getUserId = async (authToken: string): Promise<string> => {
+        const requestConfig: AxiosRequestConfig = {
+            url: 'https://api.linkedin.com/v2/me',
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${authToken}`,
+                'X-Restli-Protocol-Version': '2.0.0',
+            },
+        };
+        return (await this.httpService.axiosRef.request(requestConfig)).data.id;
+    };
 
     registerUpload = async (authToken: string, personUri: string) => {
-        try {
-            return this.httpService.axiosRef.post('https://api.linkedin.com/v2/assets?action=registerUpload',{body: JSON.stringify({"registerUploadRequest": {
-                "owner": `urn:li:person:${personUri}`,
-                "recipes": [
-                    "urn:li:digitalmediaRecipe:feedshare-image"
-                ],
-                "serviceRelationships": [{
-                    "identifier": "urn:li:userGeneratedContent",
-                    "relationshipType": "OWNER"
-                }],
-                "supportedUploadMechanism": [
-                    "SYNCHRONOUS_UPLOAD"
-                ]
-            }}),headers: {
-                'Authorization': `Bearer ${authToken}`,
-                'Content-Type': 'application/json',
-                'Connection': 'Keep-Alive'
-            }})
-        } catch (error) {
-            throw new InternalServerErrorException(error.response.data.error_description)
-        }
-    }
+        const requestConfig: AxiosRequestConfig = {
+            url: 'https://api.linkedin.com/v2/assets?action=registerUpload',
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${authToken}`,
+                'X-Restli-Protocol-Version': '2.0.0',
+            },
+            data: JSON.stringify({
+                registerUploadRequest: {
+                    recipes: ['urn:li:digitalmediaRecipe:feedshare-image'],
+                    owner: `urn:li:person:${personUri}`,
+                    serviceRelationships: [
+                        {
+                            relationshipType: 'OWNER',
+                            identifier: 'urn:li:userGeneratedContent',
+                        },
+                    ],
+                },
+            }),
+        };
+        const response = (await this.httpService.axiosRef.request(requestConfig)).data;
 
-    uploadImage = (authToken:string,uploadUrl:string, file: Buffer) => {
+        return {
+            uploadUrl: response.value.uploadMechanism['com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest'].uploadUrl as string,
+            asset: response.value.asset as string,
+        };
+    };
+
+    uploadImage = async (authToken: string, uploadUrl: string, file: Buffer) => {
+        const formData = new FormData();
+        formData.append('file', new Blob([file]));
+        const requestConfig: AxiosRequestConfig<typeof formData> = {
+            url: uploadUrl,
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${authToken}`,
+                'X-Restli-Protocol-Version': '2.0.0',
+            },
+            data: formData,
+        };
+        return await this.httpService.axiosRef.request(requestConfig);
+    };
+
+    createPost = async (postType: PostType, authToken: string, text: string) => {
         try {
-            return this.httpService.axiosRef.post(uploadUrl, {headers: {
-                'Authorization': `Bearer ${authToken}`,
-            }, file})
+            const requestConfig: AxiosRequestConfig = {
+                url: 'https://api.linkedin.com/v2/ugcPosts',
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${authToken}`,
+                    'X-Restli-Protocol-Version': '2.0.0',
+                },
+            };
+
+            const authorId = await this.getUserId(authToken);
+
+            if (postType === PostType.TEXT) {
+                const textRequestConfig: AxiosRequestConfig<CreateShare<TextShareContent>> = {
+                    ...requestConfig,
+                    data: {
+                        author: `urn:li:person:${authorId}`,
+                        lifecycleState: 'PUBLISHED',
+                        specificContent: {
+                            'com.linkedin.ugc.ShareContent': {
+                                shareMediaCategory: ShareMediaCategory.ARTICLE,
+                                shareCommentary: {
+                                    text,
+                                },
+                            },
+                        },
+                        visibility: {
+                            'com.linkedin.ugc.MemberNetworkVisibility': 'PUBLIC',
+                        },
+                    },
+                };
+                return await this.httpService.axiosRef.request(textRequestConfig);
+            }
+
+            if (postType === PostType.ARTILE) {
+                const artileRequestConfig: AxiosRequestConfig<CreateShare<ArticleOrImageShareContent>> = {
+                    ...requestConfig,
+                    data: {
+                        author: `urn:li:person:${authorId}`,
+                        lifecycleState: 'PUBLISHED',
+                        specificContent: {
+                            'com.linkedin.ugc.ShareContent': {
+                                shareMediaCategory: ShareMediaCategory.ARTICLE,
+                                shareCommentary: {
+                                    text,
+                                },
+                                media: [{ status: 'READY', originalUrl: 'https://google.com' }],
+                            },
+                        },
+                        visibility: {
+                            'com.linkedin.ugc.MemberNetworkVisibility': 'PUBLIC',
+                        },
+                    },
+                };
+                return await this.httpService.axiosRef.request(artileRequestConfig);
+            }
         } catch (error) {
-            
+            throw new HttpException(error.data.response, error.data.status);
         }
-    }
+    };
 }
