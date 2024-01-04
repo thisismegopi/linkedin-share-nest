@@ -39,6 +39,7 @@ export class LinkedinService {
     };
 
     registerUpload = async (authToken: string, personUri: string) => {
+
         const requestConfig: AxiosRequestConfig = {
             url: 'https://api.linkedin.com/v2/assets?action=registerUpload',
             method: 'POST',
@@ -46,7 +47,7 @@ export class LinkedinService {
                 Authorization: `Bearer ${authToken}`,
                 'X-Restli-Protocol-Version': '2.0.0',
             },
-            data: JSON.stringify({
+            data: {
                 registerUploadRequest: {
                     recipes: ['urn:li:digitalmediaRecipe:feedshare-image'],
                     owner: `urn:li:person:${personUri}`,
@@ -57,7 +58,7 @@ export class LinkedinService {
                         },
                     ],
                 },
-            }),
+            },
         };
         const response = (await this.httpService.axiosRef.request(requestConfig)).data;
 
@@ -95,85 +96,74 @@ export class LinkedinService {
             };
 
             const authorId = await this.getUserId(authToken);
-            console.log(authorId)
+            let data: CreateShare<TextShareContent | ArticleOrImageShareContent>; 
             if (postType === PostType.TEXT) {
-                const textRequestConfig = {
-                    ...requestConfig,
-                    data: JSON.stringify({
-                        author: `urn:li:person:${authorId}`,
-                        lifecycleState: 'PUBLISHED',
-                        specificContent: {
-                            'com.linkedin.ugc.ShareContent': {
-                                shareMediaCategory: ShareMediaCategory.NONE,
-                                shareCommentary: {
-                                    text,
-                                },
+                data = {
+                    author: `urn:li:person:${authorId}`,
+                    lifecycleState: 'PUBLISHED',
+                    specificContent: {
+                        'com.linkedin.ugc.ShareContent': {
+                            shareMediaCategory: ShareMediaCategory.NONE,
+                            shareCommentary: {
+                                text,
                             },
-                        },
-                        visibility: {
-                            'com.linkedin.ugc.MemberNetworkVisibility': 'PUBLIC',
-                        },
-                    }),
-                };
-                console.log(textRequestConfig)
-                return await this.httpService.axiosRef.request(textRequestConfig);
-            }
-
-            if (postType === PostType.ARTILE) {
-                const artileRequestConfig: AxiosRequestConfig<CreateShare<ArticleOrImageShareContent>> = {
-                    ...requestConfig,
-                    data: {
-                        author: `urn:li:person:${authorId}`,
-                        lifecycleState: 'PUBLISHED',
-                        specificContent: {
-                            'com.linkedin.ugc.ShareContent': {
-                                shareMediaCategory: ShareMediaCategory.ARTICLE,
-                                shareCommentary: {
-                                    text,
-                                },
-                                media: [{ status: 'READY', originalUrl: 'https://google.com' }],
-                            },
-                        },
-                        visibility: {
-                            'com.linkedin.ugc.MemberNetworkVisibility': 'PUBLIC',
                         },
                     },
-                };
-                return await this.httpService.axiosRef.request(artileRequestConfig);
-            }
+                    visibility: {
+                        'com.linkedin.ugc.MemberNetworkVisibility': 'PUBLIC',
+                    },
+                }
+            }else if (postType === PostType.ARTICLE) {
+                data = {
+                    author: `urn:li:person:${authorId}`,
+                    lifecycleState: 'PUBLISHED',
+                    specificContent: {
+                        'com.linkedin.ugc.ShareContent': {
+                            shareMediaCategory: ShareMediaCategory.ARTICLE,
+                            shareCommentary: {
+                                text: `${text} ${new Date()}`,
+                            },
+                            media: [{ status: 'READY', originalUrl: 'https://google.com' }],
+                        },
+                    },
+                    visibility: {
+                        'com.linkedin.ugc.MemberNetworkVisibility': 'PUBLIC',
+                    },
+                }
+            }else if(postType === PostType.IMAGE && file){
 
-            if(postType === PostType.IMAGE && file){
+                const registerUpload = await this.registerUpload(authToken, authorId);
 
-                const {uploadUrl,asset} = await this.registerUpload(authToken, authorId);
-                const response = await this.uploadImage(authToken, uploadUrl, file);
+                const response = await this.uploadImage(authToken, registerUpload.uploadUrl, file);
 
                 if(response.status !== 201){
                     throw new Error('File upload failed')
                 }
 
-                const artileRequestConfig: AxiosRequestConfig<CreateShare<ArticleOrImageShareContent>> = {
-                    ...requestConfig,
-                    data: {
-                        author: `urn:li:person:${authorId}`,
-                        lifecycleState: 'PUBLISHED',
-                        specificContent: {
-                            'com.linkedin.ugc.ShareContent': {
-                                shareMediaCategory: ShareMediaCategory.IMAGE,
-                                shareCommentary: {
-                                    text,
-                                },
-                                media: [{ status: 'READY', media: asset }],
+                data = {
+                    author: `urn:li:person:${authorId}`,
+                    lifecycleState: 'PUBLISHED',
+                    specificContent: {
+                        'com.linkedin.ugc.ShareContent': {
+                            shareMediaCategory: ShareMediaCategory.IMAGE,
+                            shareCommentary: {
+                                text,
                             },
-                        },
-                        visibility: {
-                            'com.linkedin.ugc.MemberNetworkVisibility': 'PUBLIC',
+                            media: [{ status: 'READY', media: registerUpload.asset }],
                         },
                     },
-                };
-                return await this.httpService.axiosRef.request(artileRequestConfig);
+                    visibility: {
+                        'com.linkedin.ugc.MemberNetworkVisibility': 'PUBLIC',
+                    },
+                }
+            }
+            const createPostRes = await this.httpService.axiosRef.request({...requestConfig, data});
+            if(createPostRes.status === 201){
+                return 'Post Created'
+            }else{
+                throw new Error("Failed to create post");
             }
         } catch (error) {
-            console.log(error)
             throw new HttpException(error.response.data, error.response.status);
         }
     };

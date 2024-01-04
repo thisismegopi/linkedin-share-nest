@@ -2,7 +2,7 @@ import { IsEnum, IsNotEmpty, IsString } from 'class-validator';
 
 export enum PostType {
     TEXT = 'TEXT',
-    ARTILE = 'ARTILE',
+    ARTICLE = 'ARTICLE',
     IMAGE = 'IMAGE',
 }
 export class CreatePostDto {

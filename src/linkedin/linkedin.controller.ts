@@ -1,6 +1,7 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Post, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { GenerateTokenDto } from 'src/dtos/token.dto';
 import { LinkedinService } from './linkedin.service';
+import { FileInterceptor } from '@nestjs/platform-express';
 
 @Controller('linkedin')
 export class LinkedinController {
@@ -12,7 +13,9 @@ export class LinkedinController {
     }
 
     @Post('create-post')
-    createLinkedInPost(@Body() createPostBody: any){ // for test purpose
-        return this.linkedInService.createPost(createPostBody.postType, createPostBody.authToken, createPostBody.text)
+    @UseInterceptors(FileInterceptor('file'))
+    createLinkedInPost(@Body() createPostBody: any, @UploadedFile() file: Express.Multer.File){ // for test purpose
+        // console.log(file)
+        return this.linkedInService.createPost(createPostBody.postType, createPostBody.authToken, createPostBody.text, file.buffer)
     }
 }
