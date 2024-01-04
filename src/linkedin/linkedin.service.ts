@@ -29,7 +29,7 @@ export class LinkedinService {
     getUserId = async (authToken: string): Promise<string> => {
         const requestConfig: AxiosRequestConfig = {
             url: 'https://api.linkedin.com/v2/me',
-            method: 'POST',
+            method: 'GET',
             headers: {
                 Authorization: `Bearer ${authToken}`,
                 'X-Restli-Protocol-Version': '2.0.0',
@@ -82,7 +82,7 @@ export class LinkedinService {
         return await this.httpService.axiosRef.request(requestConfig);
     };
 
-    createPost = async (postType: PostType, authToken: string, text: string) => {
+    createPost = async (postType: PostType, authToken: string, text: string, file?:Buffer) => {
         try {
             const requestConfig: AxiosRequestConfig = {
                 url: 'https://api.linkedin.com/v2/ugcPosts',
@@ -90,20 +90,21 @@ export class LinkedinService {
                 headers: {
                     Authorization: `Bearer ${authToken}`,
                     'X-Restli-Protocol-Version': '2.0.0',
+                    'Connection': 'Keep-Alive'
                 },
             };
 
             const authorId = await this.getUserId(authToken);
-
+            console.log(authorId)
             if (postType === PostType.TEXT) {
-                const textRequestConfig: AxiosRequestConfig<CreateShare<TextShareContent>> = {
+                const textRequestConfig = {
                     ...requestConfig,
-                    data: {
+                    data: JSON.stringify({
                         author: `urn:li:person:${authorId}`,
                         lifecycleState: 'PUBLISHED',
                         specificContent: {
                             'com.linkedin.ugc.ShareContent': {
-                                shareMediaCategory: ShareMediaCategory.ARTICLE,
+                                shareMediaCategory: ShareMediaCategory.NONE,
                                 shareCommentary: {
                                     text,
                                 },
@@ -112,8 +113,9 @@ export class LinkedinService {
                         visibility: {
                             'com.linkedin.ugc.MemberNetworkVisibility': 'PUBLIC',
                         },
-                    },
+                    }),
                 };
+                console.log(textRequestConfig)
                 return await this.httpService.axiosRef.request(textRequestConfig);
             }
 
@@ -139,8 +141,40 @@ export class LinkedinService {
                 };
                 return await this.httpService.axiosRef.request(artileRequestConfig);
             }
+
+            if(postType === PostType.IMAGE && file){
+
+                const {uploadUrl,asset} = await this.registerUpload(authToken, authorId);
+                const response = await this.uploadImage(authToken, uploadUrl, file);
+
+                if(response.status !== 201){
+                    throw new Error('File upload failed')
+                }
+
+                const artileRequestConfig: AxiosRequestConfig<CreateShare<ArticleOrImageShareContent>> = {
+                    ...requestConfig,
+                    data: {
+                        author: `urn:li:person:${authorId}`,
+                        lifecycleState: 'PUBLISHED',
+                        specificContent: {
+                            'com.linkedin.ugc.ShareContent': {
+                                shareMediaCategory: ShareMediaCategory.IMAGE,
+                                shareCommentary: {
+                                    text,
+                                },
+                                media: [{ status: 'READY', media: asset }],
+                            },
+                        },
+                        visibility: {
+                            'com.linkedin.ugc.MemberNetworkVisibility': 'PUBLIC',
+                        },
+                    },
+                };
+                return await this.httpService.axiosRef.request(artileRequestConfig);
+            }
         } catch (error) {
-            throw new HttpException(error.data.response, error.data.status);
+            console.log(error)
+            throw new HttpException(error.response.data, error.response.status);
         }
     };
 }

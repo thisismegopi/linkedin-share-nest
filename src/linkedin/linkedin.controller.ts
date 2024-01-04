@@ -10,4 +10,9 @@ export class LinkedinController {
     generateAccessToken(@Body() clientData: GenerateTokenDto) {
         return this.linkedInService.generateAccessToken(clientData.client_id, clientData.client_secret);
     }
+
+    @Post('create-post')
+    createLinkedInPost(@Body() createPostBody: any){ // for test purpose
+        return this.linkedInService.createPost(createPostBody.postType, createPostBody.authToken, createPostBody.text)
+    }
 }
